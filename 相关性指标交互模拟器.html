@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>方差、标准差、协方差、相关系数交互模拟器</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+        }
+        
+        .description {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 16px;
+            color: #666;
+        }
+        
+        .controls {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        
+        .control-group {
+            margin-bottom: 20px;
+        }
+        
+        .control-row {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        
+        .control-item {
+            flex: 1;
+            min-width: 250px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #555;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        
+        .value-display {
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: #2980b9;
+        }
+        
+        .metric-label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .metric-theory {
+            background-color: #e8f4f8;
+            border-left: 5px solid #3498db;
+        }
+        
+        .metric-sample {
+            background-color: #f8e8e8;
+            border-left: 5px solid #e74c3c;
+        }
+        
+        .charts-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .chart-wrapper {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        canvas {
+            max-height: 400px;
+        }
+        
+        .metrics {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        
+        .metric-item {
+            text-align: center;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border-left: 5px solid #2980b9;
+        }
+        
+        .metric-label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2980b9;
+        }
+        
+        .correlation-type {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        /* 新增：左侧三图栅格布局——X分布在上侧，散点在中间，Y分布在右侧 */
+        .left-plot-grid {
+            display: grid;
+            grid-template-columns: 1fr 220px; /* 主区 + 右侧固定宽度 */
+            grid-template-rows: 160px auto;   /* 上侧X分布高度 + 散点区自适应 */
+            gap: 12px;
+        }
+        .top-xdist { grid-column: 1 / 2; grid-row: 1 / 2; }
+        .main-scatter { grid-column: 1 / 2; grid-row: 2 / 3; }
+        .right-ydist { grid-column: 2 / 3; grid-row: 1 / 3; }
+        /* 使三个画布充满各自容器 */
+        #xDistChart, #yDistChart, #scatterChart { width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>方差、标准差、协方差、相关系数交互模拟器</h1>
+        <div class="description">
+            调整下方参数，观察数据点分布变化以及各项统计指标的实时计算结果
+        </div>
+        
+        <div class="controls">
+            <div class="control-item">
+             <label for="modeSelect">模式：</label>
+             <select id="modeSelect">
+                 <option value="gaussian" selected>线性相关（高斯）</option>
+                 <option value="uncorrelatedDependent">不相关但不独立（Y = X²）</option>
+             </select>
+         </div>
+         <div class="control-row">
+             <div class="control-item">
+                 <label for="noiseVariance">噪声方差 (σ²ₑ):</label>
+                 <input type="range" id="noiseVariance" min="0" max="5" step="0.1" value="0.5">
+                 <div class="value-display" id="noiseVarianceValue">0.5</div>
+             </div>
+         </div>
+         <div class="control-row">
+                <div class="control-item">
+                    <label for="correlation">相关系数 (r):</label>
+                    <input type="range" id="correlation" min="-1" max="1" step="0.1" value="0">
+                    <div class="value-display" id="correlationValue">0.0</div>
+                </div>
+                <div class="control-item">
+                    <label for="xVariance">X的方差 (σ²ₓ):</label>
+                    <input type="range" id="xVariance" min="0.1" max="5" step="0.1" value="1">
+                    <div class="value-display" id="xVarianceValue">1.0</div>
+                </div>
+                <div class="control-item">
+                    <label for="yVariance">Y的方差 (σ²ᵧ):</label>
+                    <input type="range" id="yVariance" min="0.1" max="5" step="0.1" value="1">
+                    <div class="value-display" id="yVarianceValue">1.0</div>
+                </div>
+                <div class="control-item">
+                    <label for="pointsCount">数据点数量:</label>
+                    <input type="range" id="pointsCount" min="50" max="500" step="10" value="200">
+                    <div class="value-display" id="pointsCountValue">200</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="correlation-type" id="correlationType">无相关</div>
+        
+        <div class="charts-container">
+            <div class="chart-wrapper">
+                <div class="left-plot-grid">
+                    <div class="top-xdist">
+                        <canvas id="xDistChart"></canvas>
+                    </div>
+                    <div class="main-scatter">
+                        <canvas id="scatterChart"></canvas>
+                    </div>
+                    <div class="right-ydist">
+                        <canvas id="yDistChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="metrics">
+            <div class="metric-item metric-theory">
+                <div class="metric-label">理论X方差 (σ²ₓ)</div>
+                <div class="metric-value" id="theoryXVariance">0.00</div>
+            </div>
+            <div class="metric-item metric-theory">
+                <div class="metric-label">理论Y方差 (σ²ᵧ)</div>
+                <div class="metric-value" id="theoryYVariance">0.00</div>
+            </div>
+            <div class="metric-item metric-sample">
+                <div class="metric-label">样本X方差 (s²ₓ)</div>
+                <div class="metric-value" id="sampleXVariance">0.00</div>
+            </div>
+            <div class="metric-item metric-sample">
+                <div class="metric-label">样本Y方差 (s²ᵧ)</div>
+                <div class="metric-value" id="sampleYVariance">0.00</div>
+            </div>
+            <div class="metric-item metric-theory">
+                <div class="metric-label">理论相关系数 (ρ)</div>
+                <div class="metric-value" id="theoryCorrelation">0.00</div>
+            </div>
+            <div class="metric-item metric-sample">
+                <div class="metric-label">样本相关系数 (r)</div>
+                <div class="metric-value" id="sampleCorrelation">0.00</div>
+            </div>
+            <div class="metric-item metric-sample">
+                <div class="metric-label">样本协方差 (Cov(X,Y))</div>
+                <div class="metric-value" id="sampleCovariance">0.00</div>
+            </div>
+            <div class="metric-item metric-sample">
+                <div class="metric-label">数据点数量 (n)</div>
+                <div class="metric-value" id="sampleSize">0</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 获取DOM元素
+        const correlationSlider = document.getElementById('correlation');
+        const xVarianceSlider = document.getElementById('xVariance');
+        const yVarianceSlider = document.getElementById('yVariance');
+        const pointsCountSlider = document.getElementById('pointsCount');
+        const modeSelect = document.getElementById('modeSelect');
+        const noiseVarianceSlider = document.getElementById('noiseVariance');
+        
+        const correlationValue = document.getElementById('correlationValue');
+        const xVarianceValue = document.getElementById('xVarianceValue');
+        const yVarianceValue = document.getElementById('yVarianceValue');
+        const pointsCountValue = document.getElementById('pointsCountValue');
+        const noiseVarianceValue = document.getElementById('noiseVarianceValue');
+        
+        const correlationType = document.getElementById('correlationType');
+        
+        // 指标显示元素
+        const theoryXVariance = document.getElementById('theoryXVariance');
+        const theoryYVariance = document.getElementById('theoryYVariance');
+        const theoryCorrelation = document.getElementById('theoryCorrelation');
+        const sampleXVariance = document.getElementById('sampleXVariance');
+        const sampleYVariance = document.getElementById('sampleYVariance');
+        const sampleCovariance = document.getElementById('sampleCovariance');
+        const sampleCorrelation = document.getElementById('sampleCorrelation');
+        const sampleSize = document.getElementById('sampleSize');
+        
+        // 图表元素
+        const scatterCtx = document.getElementById('scatterChart').getContext('2d');
+        const xDistCtx = document.getElementById('xDistChart').getContext('2d');
+        const yDistCtx = document.getElementById('yDistChart').getContext('2d');
+        
+        let scatterChart = null;
+        let xDistChart = null;
+        let yDistChart = null;
+        
+        // 生成相关数据点
+        function generateData(correlation, xVariance, yVariance, pointsCount, mode) {
+            const data = [];
+            const xStdev = Math.sqrt(xVariance);
+            const yStdev = Math.sqrt(yVariance);
+            const eStdev = Math.sqrt(noiseVarianceSlider ? parseFloat(noiseVarianceSlider.value) : 0);
+            
+            function boxMullerTransform() {
+                let u1 = 0, u2 = 0;
+                while(u1 === 0) u1 = Math.random();
+                while(u2 === 0) u2 = Math.random();
+                const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+                const z1 = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2 * Math.PI * u2);
+                return { z0, z1 };
+            }
+            
+            for (let i = 0; i < pointsCount; i += 2) {
+                const { z0, z1 } = boxMullerTransform();
+                const x1 = z0 * xStdev;
+                const x2 = z1 * xStdev;
+            
+                if (mode === 'uncorrelatedDependent') {
+                    const e1 = boxMullerTransform().z0 * eStdev;
+                    const y1 = x1 * x1 + e1; // Y = X^2 + ε
+                    data.push({ x: parseFloat(x1.toFixed(3)), y: parseFloat(y1.toFixed(3)) });
+                    if (i + 1 < pointsCount) {
+                        const e2 = boxMullerTransform().z1 * eStdev;
+                        const y2 = x2 * x2 + e2;
+                        data.push({ x: parseFloat(x2.toFixed(3)), y: parseFloat(y2.toFixed(3)) });
+                    }
+                } else {
+                    const y1 = (correlation * z0 + Math.sqrt(1 - correlation * correlation) * z1) * yStdev;
+                    const y2 = (correlation * z1 + Math.sqrt(1 - correlation * correlation) * z0) * yStdev;
+                    data.push({ x: parseFloat(x1.toFixed(3)), y: parseFloat(y1.toFixed(3)) });
+                    if (i + 1 < pointsCount) {
+                        data.push({ x: parseFloat(x2.toFixed(3)), y: parseFloat(y2.toFixed(3)) });
+                    }
+                }
+            }
+            return data;
+        }
+        
+        // 计算统计指标
+        function calculateMetrics(data) {
+            const n = data.length;
+            
+            // 计算均值
+            const meanX = data.reduce((sum, point) => sum + point.x, 0) / n;
+            const meanY = data.reduce((sum, point) => sum + point.y, 0) / n;
+            
+            // 计算方差
+            const varianceX = data.reduce((sum, point) => sum + Math.pow(point.x - meanX, 2), 0) / n;
+            const varianceY = data.reduce((sum, point) => sum + Math.pow(point.y - meanY, 2), 0) / n;
+            
+            // 计算标准差
+            const stdevX = Math.sqrt(varianceX);
+            const stdevY = Math.sqrt(varianceY);
+            
+            // 计算协方差
+            const covariance = data.reduce((sum, point) => sum + (point.x - meanX) * (point.y - meanY), 0) / n;
+            
+            // 计算相关系数
+            const correlation = stdevX * stdevY !== 0 ? covariance / (stdevX * stdevY) : 0;
+            
+            return {
+                meanX: parseFloat(meanX.toFixed(3)),
+                meanY: parseFloat(meanY.toFixed(3)),
+                varianceX: parseFloat(varianceX.toFixed(3)),
+                varianceY: parseFloat(varianceY.toFixed(3)),
+                stdevX: parseFloat(stdevX.toFixed(3)),
+                stdevY: parseFloat(stdevY.toFixed(3)),
+                covariance: parseFloat(covariance.toFixed(3)),
+                correlation: parseFloat(correlation.toFixed(3))
+            };
+        }
+        
+        // 更新相关类型显示
+        function updateCorrelationType(correlation, mode) {
+            if (mode === 'uncorrelatedDependent') {
+                correlationType.textContent = '不相关（但不独立：Y = X²）';
+                correlationType.style.color = '#8e44ad';
+                return;
+            }
+            if (correlation > 0.7) {
+                correlationType.textContent = '强正相关';
+                correlationType.style.color = '#27ae60';
+            } else if (correlation > 0.3) {
+                correlationType.textContent = '弱正相关';
+                correlationType.style.color = '#2ecc71';
+            } else if (correlation > -0.3) {
+                correlationType.textContent = '无相关';
+                correlationType.style.color = '#f39c12';
+            } else if (correlation > -0.7) {
+                correlationType.textContent = '弱负相关';
+                correlationType.style.color = '#e67e22';
+            } else {
+                correlationType.textContent = '强负相关';
+                correlationType.style.color = '#e74c3c';
+            }
+        }
+        
+        // 创建或更新散点图
+        function updateScatterChart(data, xRange, yRange) {
+             const scatterData = {
+                 datasets: [{
+                     label: '数据点',
+                     data: data,
+                     backgroundColor: 'rgba(41, 128, 185, 0.6)',
+                     borderColor: 'rgba(41, 128, 185, 1)',
+                     borderWidth: 1,
+                     pointRadius: 5,
+                     pointHoverRadius: 7
+                 }]
+             };
+             
+             const scatterOptions = {
+                 responsive: true,
+                 maintainAspectRatio: false,
+                 scales: {
+                     x: {
+                         type: 'linear',
+                         position: 'bottom',
+                         title: {
+                             display: true,
+                             text: 'X值'
+                         },
+                         grid: {
+                             color: 'rgba(0, 0, 0, 0.1)'
+-                        }
++                        },
++                        min: xRange.min,
++                        max: xRange.max
+                     },
+                     y: {
+                         title: {
+                             display: true,
+                             text: 'Y值'
+                         },
+                         grid: {
+                             color: 'rgba(0, 0, 0, 0.1)'
+-                        }
++                        },
++                        min: yRange.min,
++                        max: yRange.max
+                     }
+                 },
+                 plugins: {
+                     legend: { display: false },
+                     title: { display: false }
+                 }
+             };
+             
+             if (!scatterChart) {
+                 scatterChart = new Chart(scatterCtx, {
+                     type: 'scatter',
+                     data: scatterData,
+                     options: scatterOptions
+                 });
+             } else {
+                 scatterChart.data = scatterData;
+                 scatterChart.options = scatterOptions;
+                 scatterChart.update();
+             }
+         }
+         
+-        // 创建或更新直方图
+-        function makeHistogram(dataArr, binCount) {
+-            const minVal = Math.min(...dataArr);
+-            const maxVal = Math.max(...dataArr);
+-            const bins = Array(binCount).fill(0);
+-            dataArr.forEach(v => {
+-                const idx = Math.min(binCount - 1, Math.floor((v - minVal) / (maxVal - minVal || 1e-8) * binCount));
+-                bins[idx]++;
+-            });
+-            const labels = bins.map((_, i) => {
+-                const start = minVal + (maxVal - minVal) / binCount * i;
+-                const end = start + (maxVal - minVal) / binCount;
+-                return `${start.toFixed(1)}-${end.toFixed(1)}`;
+-            });
+-            return { labels, bins };
+-        }
++        // 创建或更新直方图（使用指定范围，返回数值中心和计数）
++        function makeHistogram(dataArr, binCount, range) {
++            const minVal = range ? range.min : Math.min(...dataArr);
++            const maxVal = range ? range.max : Math.max(...dataArr);
++            const width = (maxVal - minVal) || 1e-8;
++            const binWidth = width / binCount;
++            const counts = Array(binCount).fill(0);
++            dataArr.forEach(v => {
++                const idx = Math.min(binCount - 1, Math.max(0, Math.floor((v - minVal) / binWidth)));
++                counts[idx]++;
++            });
++            const centers = counts.map((_, i) => minVal + binWidth * (i + 0.5));
++            return { centers, counts, min: minVal, max: maxVal, binWidth };
++        }
+         
+-        function updateXDistChart(data) {
+-            const xData = data.map(p => p.x);
+-            const { labels, bins } = makeHistogram(xData, 20);
++        function updateXDistChart(data, xRange) {
++            const xData = data.map(p => p.x);
++            const { centers, counts } = makeHistogram(xData, 20, xRange);
+             const xOptions = {
+                 responsive: true,
+                 maintainAspectRatio: false,
+                 scales: {
+-                    x: { grid: { color: 'rgba(0,0,0,0.1)' } },
+-                    y: { grid: { color: 'rgba(0,0,0,0.1)' } }
++                    x: { type: 'linear', min: xRange.min, max: xRange.max, grid: { color: 'rgba(0,0,0,0.1)' }, title: { display: false } },
++                    y: { type: 'linear', beginAtZero: true, grid: { color: 'rgba(0,0,0,0.1)' }, title: { display: false } }
+                 },
+                 plugins: { legend: { display: false }, title: { display: false } }
+             };
+             const xDataCfg = {
+-                labels,
+                 datasets: [{
+-                    data: bins,
+-                    type: 'bar',
++                    type: 'bar',
++                    data: centers.map((c, i) => ({ x: c, y: counts[i] })),
++                    parsing: { xAxisKey: 'x', yAxisKey: 'y' },
+                     backgroundColor: 'rgba(41, 128, 185, 0.6)',
+                     borderColor: 'rgba(41, 128, 185, 1)',
+                     borderWidth: 1
+                 }]
+             };
+             if (!xDistChart) {
+                 xDistChart = new Chart(xDistCtx, { type: 'bar', data: xDataCfg, options: xOptions });
+             } else {
+                 xDistChart.data = xDataCfg;
+                 xDistChart.options = xOptions;
+                 xDistChart.update();
+             }
+         }
+         
+-        function updateYDistChart(data) {
+-            const yData = data.map(p => p.y);
+-            const { labels, bins } = makeHistogram(yData, 20);
++        function updateYDistChart(data, yRange) {
++            const yData = data.map(p => p.y);
++            const { centers, counts } = makeHistogram(yData, 20, yRange);
+             const yOptions = {
+-                indexAxis: 'y', // 横向条形，适合右侧竖排空间
++                indexAxis: 'y', // 横向条形
+                 responsive: true,
+                 maintainAspectRatio: false,
+                 scales: {
+-                    x: { grid: { color: 'rgba(0,0,0,0.1)' } },
+-                    y: { grid: { color: 'rgba(0,0,0,0.1)' } }
++                    x: { type: 'linear', beginAtZero: true, grid: { color: 'rgba(0,0,0,0.1)' }, title: { display: false } },
++                    y: { type: 'linear', min: yRange.min, max: yRange.max, grid: { color: 'rgba(0,0,0,0.1)' }, title: { display: false } }
+                 },
+                 plugins: { legend: { display: false }, title: { display: false } }
+             };
+             const yDataCfg = {
+-                labels,
+                 datasets: [{
+-                    data: bins,
+-                    type: 'bar',
++                    type: 'bar',
++                    data: centers.map((c, i) => ({ y: c, x: counts[i] })),
++                    parsing: { xAxisKey: 'x', yAxisKey: 'y' },
+                     backgroundColor: 'rgba(231, 76, 60, 0.6)',
+                     borderColor: 'rgba(231, 76, 60, 1)',
+                     borderWidth: 1
+                 }]
+             };
+             if (!yDistChart) {
+                 yDistChart = new Chart(yDistCtx, { type: 'bar', data: yDataCfg, options: yOptions });
+             } else {
+                 yDistChart.data = yDataCfg;
+                 yDistChart.options = yOptions;
+                 yDistChart.update();
+             }
+         }
+         
+         // 更新所有内容
+         function updateAll() {
+             // 获取当前参数值
+             const mode = modeSelect.value;
+             const correlation = mode === 'uncorrelatedDependent' ? 0 : parseFloat(correlationSlider.value);
+             const xVariance = parseFloat(xVarianceSlider.value);
+             const yVariance = parseFloat(yVarianceSlider.value);
+             const pointsCount = parseInt(pointsCountSlider.value);
+             
+             // 更新噪声方差显示
+             noiseVarianceValue.textContent = parseFloat(noiseVarianceSlider.value).toFixed(1);
+             
+             // 控件启停与显示
+             if (mode === 'uncorrelatedDependent') {
+                 correlationSlider.disabled = true;
+                 yVarianceSlider.disabled = true;
+                 noiseVarianceSlider.disabled = false;
+                 correlationValue.textContent = '0.0';
+                 yVarianceValue.textContent = '由 X 决定';
+             } else {
+                 correlationSlider.disabled = false;
+                 yVarianceSlider.disabled = false;
+                 noiseVarianceSlider.disabled = true;
+                 correlationValue.textContent = correlation.toFixed(1);
+                 yVarianceValue.textContent = yVariance.toFixed(1);
+             }
+             xVarianceValue.textContent = xVariance.toFixed(1);
+             pointsCountValue.textContent = pointsCount;
+             
+             // 生成数据
+             const data = generateData(correlation, xVariance, yVariance, pointsCount, mode);
+             
+             // 计算指标
+             const metrics = calculateMetrics(data);
+             
+             // 共享轴范围（与散点一致）
+             const xs = data.map(p => p.x);
+             const ys = data.map(p => p.y);
+             const xRange = { min: Math.min(...xs), max: Math.max(...xs) };
+             const yRange = { min: Math.min(...ys), max: Math.max(...ys) };
+             
+             // 更新理论值显示
+             theoryXVariance.textContent = xVariance.toFixed(3);
+             if (mode === 'uncorrelatedDependent') {
+                 const theoryVarY = 2 * xVariance * xVariance; // Var(Y=X^2) = 2 * (Var(X))^2 for X~N(0,σ^2)
+                 theoryYVariance.textContent = theoryVarY.toFixed(3);
+                 theoryCorrelation.textContent = '0.000';
+             } else {
+                 theoryYVariance.textContent = yVariance.toFixed(3);
+                 theoryCorrelation.textContent = correlation.toFixed(3);
+             }
+             
+             // 样本值显示
+             sampleXVariance.textContent = metrics.varianceX.toFixed(3);
+             sampleYVariance.textContent = metrics.varianceY.toFixed(3);
+             sampleCovariance.textContent = metrics.covariance.toFixed(3);
+             sampleCorrelation.textContent = metrics.correlation.toFixed(3);
+             sampleSize.textContent = pointsCount;
+             
+             // 相关类型
+             updateCorrelationType(metrics.correlation, mode);
+             
+             // 更新图表（共享轴）
+-            updateScatterChart(data);
+-            updateXDistChart(data);
+-            updateYDistChart(data);
++            updateScatterChart(data, xRange, yRange);
++            updateXDistChart(data, xRange);
++            updateYDistChart(data, yRange);
+         }
+        
+        // 添加事件监听器
+        correlationSlider.addEventListener('input', updateAll);
+        xVarianceSlider.addEventListener('input', updateAll);
+        yVarianceSlider.addEventListener('input', updateAll);
+        pointsCountSlider.addEventListener('input', updateAll);
+        modeSelect.addEventListener('change', updateAll);
+        noiseVarianceSlider.addEventListener('input', updateAll);
+        
+        // 初始化
+        updateAll();
+    </script>
+</body>
+</html>

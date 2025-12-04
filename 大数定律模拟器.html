@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大数定律模拟器 - 掷骰子</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background-color: #f4f7f9;
+            color: #333;
+        }
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        p {
+            text-align: center;
+            font-size: 1.1em;
+            color: #555;
+        }
+        .chart-container {
+            position: relative;
+            height: 40vh;
+            width: 100%;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 1em;
+            cursor: pointer;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #ecf0f1;
+            border-radius: 5px;
+            flex-wrap: wrap;
+        }
+        .stat-item {
+            text-align: center;
+            min-width: 120px;
+            margin: 5px;
+        }
+        .stat-item span {
+            display: block;
+            font-size: 0.9em;
+            color: #7f8c8d;
+        }
+        .stat-item strong {
+            font-size: 1.5em;
+            color: #2c3e50;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>大数定律模拟器</h1>
+        <p>观察随着掷骰子次数的增加，样本均值如何收敛于理论期望值 <strong>3.5</strong>。</p>
+        
+        <div class="chart-container">
+            <canvas id="llnChart"></canvas>
+        </div>
+
+        <div class="stats">
+            <div class="stat-item">
+                <span>试验次数</span>
+                <strong id="trials-count">0</strong>
+            </div>
+            <div class="stat-item">
+                <span>最后一次点数</span>
+                <strong id="last-roll">-</strong>
+            </div>
+            <div class="stat-item">
+                <span>当前样本均值</span>
+                <strong id="current-mean">-</strong>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="start-button">开始/重置模拟</button>
+        </div>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('llnChart').getContext('2d');
+        const startButton = document.getElementById('start-button');
+        const trialsCountElem = document.getElementById('trials-count');
+        const lastRollElem = document.getElementById('last-roll');
+        const currentMeanElem = document.getElementById('current-mean');
+
+        const THEORETICAL_MEAN = 3.5;
+        const MAX_TRIALS = 5000;
+
+        let chart;
+        let simulationState = {
+            trials: 0,
+            totalSum: 0,
+            animationFrameId: null,
+            isRunning: false
+        };
+
+        // 初始化图表
+        function createChart() {
+            if (chart) {
+                chart.destroy();
+            }
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: '样本均值',
+                            data: [],
+                            borderColor: '#3498db',
+                            borderWidth: 2,
+                            fill: false,
+                            pointRadius: 0,
+                            tension: 0.1
+                        },
+                        {
+                            label: `理论期望值 (${THEORETICAL_MEAN})`,
+                            data: [], // 会在更新时填充
+                            borderColor: '#e74c3c',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            fill: false,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'logarithmic', // 使用对数坐标轴，更好地观察初期和后期
+                            title: {
+                                display: true,
+                                text: '试验次数 (对数坐标)'
+                            },
+                            min: 1
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: '均值'
+                            },
+                            suggestedMin: 1,
+                            suggestedMax: 6
+                        }
+                    },
+                    animation: {
+                        duration: 0 // 禁用Chart.js自带动画，我们自己控制
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                pointStyle: 'line',
+                                // 进一步加长图例线段
+                                boxWidth: 120,
+                                boxHeight: 4,
+                                padding: 16
+                            }
+                        },
+                        tooltip: {
+                            enabled: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // 重置模拟状态和界面
+        function resetSimulation() {
+            if (simulationState.animationFrameId) {
+                cancelAnimationFrame(simulationState.animationFrameId);
+            }
+            simulationState = { trials: 0, totalSum: 0, animationFrameId: null, isRunning: false };
+            
+            trialsCountElem.textContent = '0';
+            lastRollElem.textContent = '-';
+            currentMeanElem.textContent = '-';
+            
+            createChart();
+            startButton.disabled = false;
+            startButton.textContent = '开始模拟';
+        }
+
+        // 模拟单步
+        function simulationStep() {
+            if (simulationState.trials >= MAX_TRIALS) {
+                // 模拟结束：启用按钮以允许“重置模拟”
+                startButton.disabled = false;
+                startButton.textContent = '重置模拟';
+                simulationState.isRunning = false;
+                return;
+            }
+
+            // 决定每帧运行多少次，以加速后期模拟
+            const stepsPerFrame = Math.max(1, Math.floor(simulationState.trials / 100));
+
+            for (let i = 0; i < stepsPerFrame && simulationState.trials < MAX_TRIALS; i++) {
+                simulationState.trials++;
+                const roll = Math.floor(Math.random() * 6) + 1;
+                simulationState.totalSum += roll;
+                const mean = simulationState.totalSum / simulationState.trials;
+
+                // 更新图表数据
+                chart.data.labels.push(simulationState.trials);
+                chart.data.datasets[0].data.push(mean);
+                chart.data.datasets[1].data.push(THEORETICAL_MEAN);
+
+                if (i === stepsPerFrame - 1) {
+                    trialsCountElem.textContent = simulationState.trials;
+                    lastRollElem.textContent = roll;
+                    currentMeanElem.textContent = mean.toFixed(4);
+                }
+            }
+
+            chart.update();
+            simulationState.animationFrameId = requestAnimationFrame(simulationStep);
+        }
+
+        // 按钮点击事件
+        startButton.addEventListener('click', () => {
+            if (simulationState.isRunning) return;
+
+            const label = startButton.textContent || '';
+            // 允许在按钮显示“重置模拟”时，直接执行重置（不必等到达到 MAX_TRIALS）
+            if (label.includes('重置') || simulationState.trials >= MAX_TRIALS) {
+                resetSimulation();
+                return;
+            }
+
+            // 否则启动模拟
+            simulationState.isRunning = true;
+            startButton.disabled = true;
+            startButton.textContent = '模拟中...';
+            simulationState.animationFrameId = requestAnimationFrame(simulationStep);
+        });
+
+        // 页面加载时初始化
+        window.onload = () => {
+            resetSimulation();
+        };
+
+    </script>
+</body>
+</html>
