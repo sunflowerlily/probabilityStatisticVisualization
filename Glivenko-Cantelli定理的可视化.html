@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glivenko-Cantelli 定理可视化</title>
+<style>
+    body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 1rem; background-color: #f0f2f5; }
+    .container { width: 100%; max-width: 800px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+    .controls { display: flex; align-items: center; justify-content: center; margin-bottom: 15px; gap: 15px; flex-wrap: wrap; }
+    label { font-size: 14px; }
+    input[type="range"] { width: 200px; }
+    button { padding: 8px 15px; border: none; background-color: #007bff; color: white; border-radius: 5px; cursor: pointer; }
+    button:hover { background-color: #0056b3; }
+    #n-value { font-weight: bold; color: #dc3545; min-width: 50px; text-align: center; }
+    svg { width: 100%; height: auto; }
+    .true-cdf { stroke: #dc3545; stroke-width: 2.5; fill: none; }
+    .edf-line { stroke: #007bff; stroke-width: 2; fill: none; }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <div class="controls">
+        <label for="n-slider">样本量 n:</label>
+        <input type="range" id="n-slider" min="10" max="2000" value="50" step="10">
+        <span id="n-value">n = 50</span>
+        <button id="resample-btn">重新抽样</button>
+    </div>
+    <svg id="gc-chart" viewBox="0 0 600 400"></svg>
+</div>
+
+<script>
+    // 使用 Box-Muller 变换从标准正态分布生成随机数
+    function gaussianRandom() {
+        let u = 0, v = 0;
+        while(u === 0) u = Math.random(); //Converting [0,1) to (0,1)
+        while(v === 0) v = Math.random();
+        return Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+    }
+
+    // 正态分布 CDF (使用误差函数近似)
+    function normalCDF(x, mean = 0, std = 1) {
+        return 0.5 * (1 + erf((x - mean) / (std * Math.sqrt(2))));
+    }
+
+    function erf(x) {
+        const a1 =  0.254829592;
+        const a2 = -0.284496736;
+        const a3 =  1.421413741;
+        const a4 = -1.453152027;
+        const a5 =  1.061405429;
+        const p  =  0.3275911;
+        const sign = (x >= 0) ? 1 : -1;
+        x = Math.abs(x);
+        const t = 1.0 / (1.0 + p * x);
+        const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+        return sign * y;
+    }
+
+    const svg = document.getElementById('gc-chart');
+    const slider = document.getElementById('n-slider');
+    const nValueSpan = document.getElementById('n-value');
+    const resampleBtn = document.getElementById('resample-btn');
+
+    const margin = { top: 20, right: 20, bottom: 40, left: 50 };
+    const width = 600 - margin.left - margin.right;
+    const height = 400 - margin.top - margin.bottom;
+
+    const xMin = -4, xMax = 4;
+    const xScale = x => margin.left + ((x - xMin) / (xMax - xMin)) * width;
+    const yScale = y => margin.top + height - y * height;
+
+    function drawAxesAndTrueCDF() {
+        let html = `<g id="chart-content"></g>`;
+        // Axes
+        html += `<line x1="${margin.left}" y1="${yScale(0)}" x2="${margin.left + width}" y2="${yScale(0)}" stroke="#333" />`; // X-axis
+        html += `<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + height}" stroke="#333" />`; // Y-axis
+        html += `<text x="${margin.left + width/2}" y="${margin.top + height + 30}" text-anchor="middle" font-size="12">x</text>`;
+        html += `<text transform="rotate(-90)" x="${-(margin.top + height/2)}" y="${margin.left - 35}" text-anchor="middle" font-size="12">F(x)</text>`;
+        // Ticks
+        for(let i = xMin; i <= xMax; i++) {
+            html += `<text x="${xScale(i)}" y="${margin.top + height + 15}" text-anchor="middle" font-size="10">${i}</text>`;
+        }
+        for(let i = 0; i <= 10; i++) {
+            html += `<text x="${margin.left - 10}" y="${yScale(i/10)}" text-anchor="end" font-size="10">${(i/10).toFixed(1)}</text>`;
+        }
+
+        // True CDF (Standard Normal)
+        let trueCdfPath = "M";
+        for (let i = 0; i <= width; i++) {
+            const x = xMin + (i / width) * (xMax - xMin);
+            const y = normalCDF(x);
+            trueCdfPath += `${margin.left + i},${yScale(y)} `;
+        }
+        html += `<path d="${trueCdfPath}" class="true-cdf" id="true-cdf-path" />`;
+        
+        // Legend
+        html += `<rect x="${width - 100}" y="${margin.top + 10}" width="20" height="3" fill="#dc3545"></rect><text x="${width - 75}" y="${margin.top + 15}" font-size="12">真实CDF</text>`;
+        html += `<rect x="${width - 100}" y="${margin.top + 30}" width="20" height="3" fill="#007bff"></rect><text x="${width - 75}" y="${margin.top + 35}" font-size="12">样本EDF</text>`;
+
+        svg.innerHTML = html;
+    }
+
+    function drawEDF() {
+        const n = parseInt(slider.value);
+        nValueSpan.textContent = `n = ${n}`;
+
+        // Generate n samples from N(0, 1)
+        const samples = Array.from({ length: n }, () => gaussianRandom()).sort((a, b) => a - b);
+
+        let edfPath = `M${xScale(xMin)},${yScale(0)} L${xScale(samples[0])},${yScale(0)}`;
+        for (let i = 0; i < n; i++) {
+            const x_curr = samples[i];
+            const x_next = (i + 1 < n) ? samples[i+1] : xMax;
+            const y_curr = (i + 1) / n;
+            edfPath += ` L${xScale(x_curr)},${yScale(y_curr)} L${xScale(x_next)},${yScale(y_curr)}`;
+        }
+
+        let chartContent = document.getElementById('chart-content');
+        if (!chartContent) return;
+        
+        // Remove old EDF path
+        const oldPath = document.getElementById('edf-path');
+        if (oldPath) oldPath.remove();
+
+        // Add new EDF path
+        const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        pathEl.setAttribute('d', edfPath);
+        pathEl.setAttribute('class', 'edf-line');
+        pathEl.setAttribute('id', 'edf-path');
+        chartContent.appendChild(pathEl);
+    }
+
+    drawAxesAndTrueCDF();
+    drawEDF();
+
+    slider.addEventListener('input', drawEDF);
+    resampleBtn.addEventListener('click', drawEDF);
+
+</script>
+
+</body>
+</html>

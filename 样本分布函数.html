@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>样本分布函数可视化</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; padding: 1rem; background-color: #f0f2f5; }
+        .chart-container { width: 100%; max-width: 700px; background-color: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        h4 { text-align: center; margin-top: 0; margin-bottom: 20px; color: #333; font-size: 24px; }
+        svg { width: 100%; height: auto; overflow: visible; }
+        .axis-line { stroke: #333; stroke-width: 2.5; }
+        .grid-line { stroke: #e0e0e0; stroke-width: 1.5; stroke-dasharray: 2,2; }
+        .step-line { stroke: #007bff; stroke-width: 3.5; fill: none; }
+        .sample-point { fill: #dc3545; }
+        .jump-point-closed { fill: #007bff; stroke: white; stroke-width: 2.5; }
+        .jump-point-open { fill: white; stroke: #007bff; stroke-width: 3.5; }
+        .axis-label { font-size: 24px; fill: #333; font-weight: bold; }
+        .tick-label { font-size: 20px; fill: #555; }
+    </style>
+</head>
+<body>
+<div class="chart-container">
+    <h4>样本分布函数 F₅(x) 对 {1.2, 3.7, 3.7, 5.1, 8.5}</h4>
+    <svg id="edf-chart-static" viewBox="0 0 400 400"></svg>
+</div>
+<script>
+    (function() {
+        const data = [1.2, 3.7, 3.7, 5.1, 8.5];
+        const n = data.length;
+        const svg = document.getElementById('edf-chart-static');
+        const margin = { top: 40, right: 40, bottom: 60, left: 60 };
+        const width = 400 - margin.left - margin.right;
+        const height = 400 - margin.top - margin.bottom;
+        const xScale = val => margin.left + (val / 10) * width;
+        const yScale = val => margin.top + height - (val * height);
+        let gHTML = '';
+        gHTML += `<line class="axis-line" x1="${margin.left}" y1="${margin.top + height}" x2="${margin.left + width}" y2="${margin.top + height}"></line>`;
+        gHTML += `<text class="axis-label" x="${margin.left + width / 2}" y="${margin.top + height + 40}" text-anchor="middle">x</text>`;
+        gHTML += `<line class="axis-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + height}"></line>`;
+        gHTML += `<text class="axis-label" transform="rotate(-90)" x="${-(margin.top + height / 2)}" y="${margin.left - 40}" text-anchor="middle">F₅(x)</text>`;
+        for (let i = 0; i <= 10; i++) {
+            const x = xScale(i);
+            gHTML += `<line x1="${x}" y1="${margin.top + height}" x2="${x}" y2="${margin.top + height + 8}" stroke="#333"></line>`;
+            if (i % 2 === 0) gHTML += `<text class="tick-label" x="${x}" y="${margin.top + height + 25}" text-anchor="middle">${i}</text>`;
+        }
+        for (let i = 0; i <= 5; i++) {
+            const y = yScale(i / 5);
+            gHTML += `<line x1="${margin.left - 8}" y1="${y}" x2="${margin.left}" y2="${y}" stroke="#333"></line>`;
+            gHTML += `<text class="tick-label" x="${margin.left - 15}" y="${y + 6}" text-anchor="end">${(i/5).toFixed(1)}</text>`;
+            if (i > 0) gHTML += `<line class="grid-line" x1="${margin.left}" y1="${y}" x2="${margin.left + width}" y2="${y}"></line>`;
+        }
+        data.forEach(d => { gHTML += `<circle class="sample-point" cx="${xScale(d)}" cy="${margin.top + height}" r="6"></circle>`; });
+        const sortedUniqueData = [...new Set(data)].sort((a, b) => a - b);
+        let points = `${xScale(0)},${yScale(0)} ${xScale(sortedUniqueData[0])},${yScale(0)} `;
+        let cumulativeCount = 0;
+        for (let i = 0; i < sortedUniqueData.length; i++) {
+            const val = sortedUniqueData[i];
+            const prevCount = cumulativeCount;
+            const occurrences = data.filter(d => d === val).length;
+            cumulativeCount += occurrences;
+            const x = xScale(val);
+            const y_prev = yScale(prevCount / n);
+            const y_curr = yScale(cumulativeCount / n);
+            points += `${x},${y_curr} `;
+            if (i < sortedUniqueData.length - 1) { points += `${xScale(sortedUniqueData[i+1])},${y_curr} `; }
+            gHTML += `<circle class="jump-point-open" cx="${x}" cy="${y_prev}" r="6"></circle>`;
+            gHTML += `<circle class="jump-point-closed" cx="${x}" cy="${y_curr}" r="6"></circle>`;
+        }
+        points += `${xScale(10)},${yScale(1)}`;
+        gHTML += `<polyline class="step-line" points="${points}"></polyline>`;
+        svg.innerHTML = gHTML;
+    })();
+</script>
+</body>
+</html>
