@@ -1,0 +1,376 @@
+<!-- 保持上面的 HTML 和 CSS 不变，只替换下面的 script 部分 -->
+
+<script>
+    // --- 全局变量 ---
+    let parentChart, samplingChart;
+    let sampleMeans = [];
+    let currentDist = 'uniform';
+    let sampleSize = 5;
+    
+    // 状态控制
+    let isRunning = false;
+    let animationId = null; // 新增：用于追踪并取消动画
+    
+    // 缓存参数
+    let theoreticalMean = 0;
+    let theoreticalSD = 0;
+    let minX = 0, maxX = 100; 
+
+    // --- 初始化 ---
+    window.onload = function() {
+        initCharts();
+        updateUIParams();
+        updateParentDist();
+    };
+
+    // --- 事件监听 ---
+    document.getElementById('distType').addEventListener('change', (e) => {
+        currentDist = e.target.value;
+        updateUIParams();
+        updateParentDist();
+        resetSimulation(); // 切换分布时自动重置
+    });
+
+    document.getElementById('sampleSize').addEventListener('input', (e) => {
+        sampleSize = parseInt(e.target.value);
+        document.getElementById('n-display').textContent = sampleSize;
+        resetSimulation(); // 改变样本量时自动重置
+    });
+
+    // 动态参数监听
+    ['bi-n', 'bi-p', 'poi-l', 'hyp-k', 'hyp-n'].forEach(id => {
+        document.getElementById(id).addEventListener('input', (e) => {
+            document.getElementById('val-' + id).textContent = e.target.value;
+            updateParentDist();
+            resetSimulation();
+        });
+    });
+
+    function updateUIParams() {
+        const pBox = document.getElementById('dynamic-params');
+        const pBi = document.getElementById('params-binomial');
+        const pPoi = document.getElementById('params-poisson');
+        const pHyp = document.getElementById('params-hyper');
+
+        pBox.style.display = 'none';
+        pBi.style.display = 'none';
+        pPoi.style.display = 'none';
+        pHyp.style.display = 'none';
+
+        if(['binomial', 'poisson', 'hypergeometric'].includes(currentDist)) {
+            pBox.style.display = 'block';
+            if(currentDist === 'binomial') pBi.style.display = 'block';
+            if(currentDist === 'poisson') pPoi.style.display = 'block';
+            if(currentDist === 'hypergeometric') pHyp.style.display = 'block';
+        }
+    }
+
+    // --- 核心数学：生成随机数 ---
+    function getSingleRandom(type) {
+        switch(type) {
+            case 'uniform': return Math.random() * 100;
+            case 'normal': 
+                let u=0,v=0; 
+                while(u===0) u=Math.random(); 
+                while(v===0) v=Math.random();
+                return Math.sqrt(-2.0*Math.log(u))*Math.cos(2.0*Math.PI*v) * 15 + 50;
+            case 'exponential':
+                return -Math.log(1 - Math.random()) * 20;
+            case 'binomial':
+                const n = parseInt(document.getElementById('bi-n').value);
+                const p = parseFloat(document.getElementById('bi-p').value);
+                let success = 0;
+                for(let i=0; i<n; i++) if(Math.random() < p) success++;
+                return success;
+            case 'poisson':
+                const L = parseInt(document.getElementById('poi-l').value);
+                let limit = Math.exp(-L), k=0, prod=1;
+                let safety = 0;
+                do { 
+                    k++; 
+                    prod *= Math.random(); 
+                    safety++;
+                } while(prod > limit && safety < 1000); 
+                return k - 1;
+            case 'hypergeometric':
+                const M = 100;
+                const K = parseInt(document.getElementById('hyp-k').value);
+                const sn = parseInt(document.getElementById('hyp-n').value);
+                let successes = 0;
+                let currentK = K;
+                let currentM = M;
+                for(let i=0; i<sn; i++) {
+                    if(currentM <= 0) break; 
+                    if(Math.random() < currentK/currentM) {
+                        successes++;
+                        currentK--;
+                    }
+                    currentM--;
+                }
+                return successes;
+        }
+        return 0;
+    }
+
+    // --- 理论值计算 ---
+    function calculateTheoreticalStats() {
+        switch(currentDist) {
+            case 'uniform':
+                theoreticalMean = 50;
+                theoreticalSD = 28.87;
+                minX = 0; maxX = 100;
+                break;
+            case 'normal':
+                theoreticalMean = 50;
+                theoreticalSD = 15;
+                minX = 0; maxX = 100;
+                break;
+            case 'exponential':
+                theoreticalMean = 20;
+                theoreticalSD = 20;
+                minX = 0; maxX = 100;
+                break;
+            case 'binomial':
+                const n = parseInt(document.getElementById('bi-n').value);
+                const p = parseFloat(document.getElementById('bi-p').value);
+                theoreticalMean = n * p;
+                theoreticalSD = Math.sqrt(n * p * (1-p));
+                minX = 0; maxX = n + 1;
+                break;
+            case 'poisson':
+                const L = parseInt(document.getElementById('poi-l').value);
+                theoreticalMean = L;
+                theoreticalSD = Math.sqrt(L);
+                minX = 0; maxX = L * 3 + 6; 
+                break;
+            case 'hypergeometric':
+                const M = 100;
+                const K = parseInt(document.getElementById('hyp-k').value);
+                const sn = parseInt(document.getElementById('hyp-n').value);
+                theoreticalMean = sn * (K/M);
+                const variance = sn * (K/M) * ((M-K)/M) * ((M-sn)/(M-1));
+                theoreticalSD = Math.sqrt(variance);
+                minX = 0; maxX = sn + 1;
+                break;
+        }
+    }
+
+    // --- 绘图逻辑 ---
+    function updateParentDist() {
+        calculateTheoreticalStats();
+        
+        const popData = [];
+        for(let i=0; i<10000; i++) popData.push(getSingleRandom(currentDist));
+
+        const hist = getHistogram(popData, minX, maxX);
+        
+        parentChart.data.labels = hist.labels;
+        parentChart.data.datasets[0].data = hist.counts;
+        
+        parentChart.options.scales.x.min = minX;
+        parentChart.options.scales.x.max = maxX;
+        samplingChart.options.scales.x.min = minX;
+        samplingChart.options.scales.x.max = maxX;
+
+        parentChart.update();
+        samplingChart.update(); // 这里的更新很重要，确保坐标轴同步
+        updateStatsTable();
+    }
+
+    // --- 异步模拟逻辑 ---
+    function startSimulation(totalToAdd) {
+        if(isRunning) return; // 防止重复点击
+        isRunning = true;
+        toggleButtons(true); // 禁用添加按钮，但我们会在 reset 中强制启用
+
+        const batchSize = 1000; 
+        let processed = 0;
+        
+        document.getElementById('running-text').style.display = 'inline';
+        const progressBar = document.getElementById('progress-fill');
+        const statusBar = document.getElementById('status-bar');
+        if(totalToAdd > 2000) statusBar.style.display = 'block';
+
+        function processBatch() {
+            const limit = Math.min(batchSize, totalToAdd - processed);
+            
+            for(let i=0; i<limit; i++) {
+                let sum = 0;
+                for(let j=0; j<sampleSize; j++) {
+                    sum += getSingleRandom(currentDist);
+                }
+                sampleMeans.push(sum / sampleSize);
+            }
+
+            processed += limit;
+            
+            if(totalToAdd > 0) {
+                progressBar.style.width = (processed / totalToAdd * 100) + '%';
+            }
+
+            document.getElementById('total-sims').textContent = sampleMeans.length.toLocaleString();
+
+            if(processed < totalToAdd) {
+                // 关键修改：保存动画ID，以便可以取消
+                animationId = requestAnimationFrame(processBatch);
+            } else {
+                finishSimulation();
+            }
+        }
+
+        animationId = requestAnimationFrame(processBatch);
+    }
+
+    function finishSimulation() {
+        updateSamplingChart();
+        updateStatsTable();
+        
+        isRunning = false;
+        toggleButtons(false);
+        document.getElementById('running-text').style.display = 'none';
+        document.getElementById('status-bar').style.display = 'none';
+        document.getElementById('progress-fill').style.width = '0%';
+    }
+
+    // 关键修复：重置功能现在是“强制停止并重置”
+    function resetSimulation() {
+        // 1. 如果正在运行，强制停止动画
+        if (isRunning && animationId) {
+            cancelAnimationFrame(animationId);
+            isRunning = false;
+            // 恢复UI状态
+            toggleButtons(false);
+            document.getElementById('running-text').style.display = 'none';
+            document.getElementById('status-bar').style.display = 'none';
+            document.getElementById('progress-fill').style.width = '0%';
+        }
+        
+        // 2. 清空数据
+        sampleMeans = [];
+        
+        // 3. 强制更新图表（传入空数组）
+        const hist = getHistogram([], minX, maxX);
+        samplingChart.data.labels = hist.labels;
+        samplingChart.data.datasets[0].data = hist.counts;
+        samplingChart.update();
+        
+        // 4. 更新表格和计数器
+        updateStatsTable();
+        document.getElementById('total-sims').textContent = "0";
+    }
+
+    function toggleButtons(disabled) {
+        // 这里的逻辑是：如果是禁用(disabled=true)，则禁用所有添加按钮
+        // Reset 按钮永远保持可用，或者你可以选择也禁用它，但为了能强制停止，建议保持 Reset 可用
+        const btns = document.querySelectorAll('.btn-add'); // 只禁用添加按钮
+        btns.forEach(b => b.disabled = disabled);
+        
+        // 如果你想让 Reset 按钮在运行时变成“停止”，可以改这里，但目前保持简单：
+        // Reset 按钮永远不禁用，这样用户随时可以点
+    }
+
+    function updateSamplingChart() {
+        const hist = getHistogram(sampleMeans, minX, maxX);
+        samplingChart.data.labels = hist.labels;
+        samplingChart.data.datasets[0].data = hist.counts;
+        samplingChart.update();
+    }
+
+    function getHistogram(data, min, max) {
+        let isDiscreteSmall = (currentDist === 'binomial' || currentDist === 'poisson' || currentDist === 'hypergeometric');
+        let bins = 60;
+        
+        if (isDiscreteSmall && (max - min) < 60) {
+            bins = Math.ceil(max - min);
+        }
+
+        const step = (max - min) / bins;
+        const counts = new Array(bins).fill(0);
+        const labels = [];
+
+        for(let i=0; i<bins; i++) {
+            let val = min + i * step;
+            labels.push(step < 1 ? val.toFixed(1) : Math.floor(val));
+        }
+
+        // 如果数据为空，直接返回全0数组
+        if (!data || data.length === 0) {
+            return { labels, counts };
+        }
+
+        for(let v of data) {
+            if (v < min || v >= max) continue;
+            let idx = Math.floor((v - min) / step);
+            if(idx >= bins) idx = bins - 1;
+            counts[idx]++;
+        }
+        return { labels, counts };
+    }
+
+    function updateStatsTable() {
+        document.getElementById('pop-mean').textContent = theoreticalMean.toFixed(2);
+        document.getElementById('pop-sd').textContent = theoreticalSD.toFixed(2);
+
+        if (sampleMeans.length > 0) {
+            const sum = sampleMeans.reduce((a,b)=>a+b, 0);
+            const mean = sum / sampleMeans.length;
+            
+            const sqDiff = sampleMeans.map(v => Math.pow(v - mean, 2));
+            const variance = sqDiff.reduce((a,b)=>a+b, 0) / sampleMeans.length;
+            const sd = Math.sqrt(variance);
+
+            document.getElementById('sample-mean').textContent = mean.toFixed(2);
+            document.getElementById('sample-se').textContent = sd.toFixed(2);
+        } else {
+            document.getElementById('sample-mean').textContent = "--";
+            document.getElementById('sample-se').textContent = "--";
+        }
+    }
+
+    function initCharts() {
+        const commonConfig = {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            elements: { bar: { borderWidth: 1 } },
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { 
+                    grid: { display: false },
+                    ticks: { maxTicksLimit: 10 }
+                },
+                y: { display: false }
+            }
+        };
+
+        const ctx1 = document.getElementById('parentChart').getContext('2d');
+        parentChart = new Chart(ctx1, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    backgroundColor: '#adb5bd',
+                    barPercentage: 1.0,
+                    categoryPercentage: 1.0
+                }]
+            },
+            options: commonConfig
+        });
+
+        const ctx2 = document.getElementById('samplingChart').getContext('2d');
+        samplingChart = new Chart(ctx2, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    backgroundColor: '#0d6efd',
+                    barPercentage: 1.0,
+                    categoryPercentage: 1.0
+                }]
+            },
+            options: commonConfig
+        });
+    }
+</script>
