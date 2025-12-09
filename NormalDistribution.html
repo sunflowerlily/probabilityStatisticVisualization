@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>正态分布参数演示 (μ 和 σ)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- 使用 MathJax 渲染数学公式 -->
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f9;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            padding: 30px;
+            max-width: 900px;
+            width: 100%;
+        }
+        h2 { text-align: center; color: #333; margin-bottom: 30px; }
+        
+        .chart-wrapper {
+            position: relative;
+            height: 400px;
+            width: 100%;
+            margin-bottom: 30px;
+        }
+
+        .controls {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .control-label {
+            width: 120px;
+            font-weight: bold;
+            color: #495057;
+        }
+
+        input[type=range] {
+            flex-grow: 1;
+            cursor: pointer;
+        }
+
+        .value-display {
+            width: 60px;
+            text-align: right;
+            font-family: monospace;
+            font-size: 1.1em;
+            color: #0d6efd;
+            font-weight: bold;
+        }
+
+        .formula-box {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 1.2em;
+            min-height: 80px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .explanation {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #6c757d;
+            background: #fff3cd;
+            padding: 10px;
+            border-radius: 5px;
+            border-left: 4px solid #ffc107;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>正态分布可视化: μ 和 σ 的影响</h2>
+
+    <div class="chart-wrapper">
+        <canvas id="normalChart"></canvas>
+    </div>
+
+    <div class="controls">
+        <!-- 均值控制 -->
+        <div class="control-group">
+            <div class="control-label">均值 (μ)</div>
+            <input type="range" id="mu-slider" min="-5" max="5" step="0.1" value="0">
+            <div class="value-display" id="mu-val">0</div>
+        </div>
+        <div class="explanation" id="mu-desc">
+            <strong>μ (Mu):</strong> 决定曲线的中心位置。改变它，曲线会左右平移。
+        </div>
+
+        <hr style="border-top: 1px solid #dee2e6; margin: 20px 0;">
+
+        <!-- 标准差控制 -->
+        <div class="control-group">
+            <div class="control-label">标准差 (σ)</div>
+            <input type="range" id="sigma-slider" min="0.5" max="3" step="0.1" value="1">
+            <div class="value-display" id="sigma-val">1</div>
+        </div>
+        <div class="explanation" id="sigma-desc">
+            <strong>σ (Sigma):</strong> 决定曲线的宽度和高度。σ 越小，曲线越尖锐（数据越集中）；σ 越大，曲线越扁平（数据越分散）。
+        </div>
+    </div>
+
+    <!-- 数学公式展示 -->
+    <div class="formula-box">
+        <span id="math-formula">
+            $$ f(x) = \frac{1}{\sigma\sqrt{2\pi}} e^{-\frac{1}{2}\left(\frac{x-\mu}{\sigma}\right)^2} $$
+        </span>
+    </div>
+</div>
+
+<script>
+    const ctx = document.getElementById('normalChart').getContext('2d');
+    
+    // 初始化参数
+    let mu = 0;
+    let sigma = 1;
+
+    // 生成 x 轴数据点 (-10 到 10)
+    const xValues = [];
+    for (let i = -10; i <= 10; i += 0.1) {
+        xValues.push(parseFloat(i.toFixed(1)));
+    }
+
+    // 正态分布概率密度函数 (PDF)
+    function normalPDF(x, mu, sigma) {
+        const num = Math.exp(-0.5 * Math.pow((x - mu) / sigma, 2));
+        const den = sigma * Math.sqrt(2 * Math.PI);
+        return num / den;
+    }
+
+    // 计算 Y 轴数据
+    function generateData(mu, sigma) {
+        return xValues.map(x => normalPDF(x, mu, sigma));
+    }
+
+    // 创建 Chart.js 图表
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: xValues,
+            datasets: [{
+                label: '正态分布曲线',
+                data: generateData(mu, sigma),
+                borderColor: '#0d6efd',
+                backgroundColor: 'rgba(13, 110, 253, 0.2)',
+                borderWidth: 3,
+                pointRadius: 0, // 不显示数据点圆圈，使线条更平滑
+                fill: true,
+                tension: 0.4 // 贝塞尔曲线平滑度
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: {
+                duration: 0 // 禁用动画以获得即时响应
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index',
+            },
+            scales: {
+                x: {
+                    title: { display: true, text: 'X (随机变量)' },
+                    grid: { color: '#e9ecef' }
+                },
+                y: {
+                    min: 0,
+                    max: 1.0, // 固定 Y 轴最大值以便更好地观察高度变化
+                    title: { display: true, text: '概率密度' },
+                    grid: { color: '#e9ecef' }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    enabled: true,
+                    callbacks: {
+                        label: function(context) {
+                            return `P(x) = ${context.parsed.y.toFixed(4)}`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // 更新函数
+    function updateChart() {
+        // 更新数值显示
+        document.getElementById('mu-val').textContent = mu;
+        document.getElementById('sigma-val').textContent = sigma;
+
+        // 重新计算数据
+        chart.data.datasets[0].data = generateData(mu, sigma);
+        
+        // 动态调整 Y 轴最大值，防止曲线超出或太小
+        // 峰值高度约为 0.4 / sigma。为了视觉效果，我们留一点余量。
+        const peakHeight = 1 / (sigma * Math.sqrt(2 * Math.PI));
+        chart.options.scales.y.max = Math.ceil(peakHeight * 1.2 * 10) / 10; 
+        
+        chart.update();
+
+        // 更新 MathJax 公式
+        updateFormula();
+    }
+
+    function updateFormula() {
+        const formulaContainer = document.getElementById('math-formula');
+        // 构建 LaTeX 字符串
+        const latex = `$$ f(x) = \\frac{1}{${sigma}\\sqrt{2\\pi}} e^{-\\frac{1}{2}\\left(\\frac{x-(${mu})}{${sigma}}\\right)^2} $$`;
+        formulaContainer.innerHTML = latex;
+        // 通知 MathJax 重新渲染
+        if (window.MathJax) {
+            MathJax.typesetPromise([formulaContainer]);
+        }
+    }
+
+    // 事件监听
+    document.getElementById('mu-slider').addEventListener('input', (e) => {
+        mu = parseFloat(e.target.value);
+        updateChart();
+    });
+
+    document.getElementById('sigma-slider').addEventListener('input', (e) => {
+        sigma = parseFloat(e.target.value);
+        updateChart();
+    });
+
+    // 初始化渲染
+    updateChart();
+
+</script>
+
+</body>
+</html>
