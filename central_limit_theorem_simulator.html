@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中心极限定理模拟器</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background-color: #f4f7f9;
+            color: #333;
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        p {
+            text-align: center;
+            font-size: 1.1em;
+            color: #555;
+            margin-bottom: 30px;
+        }
+        .chart-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+            width: 100%;
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 20px;
+            padding: 20px;
+            background-color: #ecf0f1;
+            border-radius: 5px;
+        }
+        .control-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        label {
+            font-weight: 500;
+            color: #2c3e50;
+            min-width: 150px;
+        }
+        select, input {
+            padding: 8px 12px;
+            font-size: 1em;
+            border: 1px solid #bdc3c7;
+            border-radius: 5px;
+            min-width: 200px;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 1em;
+            cursor: pointer;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+            padding: 20px;
+            background-color: #ecf0f1;
+            border-radius: 5px;
+        }
+        .stat-item {
+            text-align: center;
+        }
+        .stat-item span {
+            display: block;
+            font-size: 0.9em;
+            color: #7f8c8d;
+        }
+        .stat-item strong {
+            font-size: 1.8em;
+            color: #2c3e50;
+        }
+        .distribution-info {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>中心极限定理模拟器</h1>
+        <p>观察不同总体分布在不同样本量下的样本均值分布如何趋近于正态分布</p>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="distribution-select">总体分布类型：</label>
+                <select id="distribution-select">
+                    <option value="normal">正态分布</option>
+                    <option value="uniform">均匀分布</option>
+                    <option value="exponential">指数分布</option>
+                    <option value="binomial">二项分布</option>
+                    <option value="poisson">泊松分布</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="sample-size">样本大小 (n)：</label>
+                <input type="range" id="sample-size" min="1" max="100" value="5" step="1">
+                <span id="sample-size-value">5</span>
+            </div>
+            
+            <div class="control-group">
+                <label for="trials-count">试验次数：</label>
+                <input type="range" id="trials-count" min="100" max="10000" value="1000" step="100">
+                <span id="trials-count-value">1000</span>
+            </div>
+            
+            <div class="distribution-info">
+                <strong>总体分布参数：</strong>
+                <span id="distribution-params">正态分布: μ=0, σ=1</span>
+            </div>
+            
+            <button id="run-button">运行模拟</button>
+        </div>
+
+        <div class="chart-grid">
+            <div>
+                <h3 style="text-align: center;">总体分布</h3>
+                <div class="chart-container">
+                    <canvas id="populationChart"></canvas>
+                </div>
+            </div>
+            <div>
+                <h3 style="text-align: center;">样本均值分布 (n = <span id="mean-n-value">5</span>)</h3>
+                <div class="chart-container">
+                    <canvas id="meansChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-item">
+                <span>总体均值</span>
+                <strong id="population-mean">0.00</strong>
+            </div>
+            <div class="stat-item">
+                <span>总体方差</span>
+                <strong id="population-variance">1.00</strong>
+            </div>
+            <div class="stat-item">
+                <span>样本均值</span>
+                <strong id="sample-mean">0.00</strong>
+            </div>
+            <div class="stat-item">
+                <span>样本均值标准差</span>
+                <strong id="sample-mean-std">0.00</strong>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM元素
+        const distributionSelect = document.getElementById('distribution-select');
+        const sampleSizeSlider = document.getElementById('sample-size');
+        const sampleSizeValue = document.getElementById('sample-size-value');
+        const trialsCountSlider = document.getElementById('trials-count');
+        const trialsCountValue = document.getElementById('trials-count-value');
+        const distributionParams = document.getElementById('distribution-params');
+        const runButton = document.getElementById('run-button');
+        const populationChartCtx = document.getElementById('populationChart').getContext('2d');
+        const meansChartCtx = document.getElementById('meansChart').getContext('2d');
+        const meanNValue = document.getElementById('mean-n-value');
+        const populationMeanElem = document.getElementById('population-mean');
+        const populationVarianceElem = document.getElementById('population-variance');
+        const sampleMeanElem = document.getElementById('sample-mean');
+        const sampleMeanStdElem = document.getElementById('sample-mean-std');
+
+        let populationChart, meansChart;
+
+        // 分布参数配置
+        const distributions = {
+            normal: {
+                name: '正态分布',
+                params: { mu: 0, sigma: 1 },
+                generate: (n) => {
+                    const { mu, sigma } = distributions.normal.params;
+                    return Array(n).fill(0).map(() => {
+                        let u1, u2, v1, v2, s;
+                        do {
+                            u1 = 2 * Math.random() - 1;
+                            u2 = 2 * Math.random() - 1;
+                            s = u1 * u1 + u2 * u2;
+                        } while (s >= 1 || s === 0);
+                        const mul = Math.sqrt(-2.0 * Math.log(s) / s);
+                        return u1 * mul * sigma + mu;
+                    });
+                },
+                pdf: (x) => {
+                    const { mu, sigma } = distributions.normal.params;
+                    const exponent = -0.5 * Math.pow((x - mu) / sigma, 2);
+                    return (1 / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(exponent);
+                },
+                range: () => {
+                    const { mu, sigma } = distributions.normal.params;
+                    return { a: mu - 4 * sigma, b: mu + 4 * sigma };
+                },
+                mean: () => distributions.normal.params.mu,
+                variance: () => Math.pow(distributions.normal.params.sigma, 2)
+            },
+            uniform: {
+                name: '均匀分布',
+                params: { a: -Math.sqrt(3), b: Math.sqrt(3) }, // 均值0，方差1
+                generate: (n) => {
+                    const { a, b } = distributions.uniform.params;
+                    return Array(n).fill(0).map(() => a + Math.random() * (b - a));
+                },
+                pdf: (x) => {
+                    const { a, b } = distributions.uniform.params;
+                    return (x >= a && x <= b) ? 1 / (b - a) : 0;
+                },
+                range: () => distributions.uniform.params,
+                mean: () => {
+                    const { a, b } = distributions.uniform.params;
+                    return (a + b) / 2;
+                },
+                variance: () => {
+                    const { a, b } = distributions.uniform.params;
+                    return Math.pow(b - a, 2) / 12;
+                }
+            },
+            exponential: {
+                name: '指数分布',
+                params: { lambda: 1 }, // 均值1，方差1
+                generate: (n) => {
+                    const lambda = distributions.exponential.params.lambda;
+                    return Array(n).fill(0).map(() => -Math.log(1 - Math.random()) / lambda);
+                },
+                pdf: (x) => {
+                    const lambda = distributions.exponential.params.lambda;
+                    return x >= 0 ? lambda * Math.exp(-lambda * x) : 0;
+                },
+                range: () => {
+                    const lambda = distributions.exponential.params.lambda;
+                    return { a: 0, b: -Math.log(0.001) / lambda };
+                },
+                mean: () => 1 / distributions.exponential.params.lambda,
+                variance: () => 1 / Math.pow(distributions.exponential.params.lambda, 2)
+            },
+            binomial: {
+                name: '二项分布',
+                params: { n: 10, p: 0.5 }, // 均值5，方差2.5
+                generate: (n) => {
+                    const { n: N, p } = distributions.binomial.params;
+                    return Array(n).fill(0).map(() => {
+                        let sum = 0;
+                        for (let i = 0; i < N; i++) {
+                            sum += Math.random() < p ? 1 : 0;
+                        }
+                        return sum;
+                    });
+                },
+                pdf: (x) => {
+                    const { n: N, p } = distributions.binomial.params;
+                    x = Math.floor(x);
+                    if (x < 0 || x > N) return 0;
+                    return comb(N, x) * Math.pow(p, x) * Math.pow(1 - p, N - x);
+                },
+                range: () => {
+                    const { n: N } = distributions.binomial.params;
+                    return { a: 0, b: N };
+                },
+                mean: () => {
+                    const { n: N, p } = distributions.binomial.params;
+                    return N * p;
+                },
+                variance: () => {
+                    const { n: N, p } = distributions.binomial.params;
+                    return N * p * (1 - p);
+                }
+            },
+            poisson: {
+                name: '泊松分布',
+                params: { lambda: 5 }, // 均值5，方差5
+                generate: (n) => {
+                    const lambda = distributions.poisson.params.lambda;
+                    return Array(n).fill(0).map(() => {
+                        let k = 0;
+                        let p = 1;
+                        let L = Math.exp(-lambda);
+                        do {
+                            k++;
+                            p *= Math.random();
+                        } while (p > L);
+                        return k - 1;
+                    });
+                },
+                pdf: (x) => {
+                    const lambda = distributions.poisson.params.lambda;
+                    x = Math.floor(x);
+                    if (x < 0) return 0;
+                    return (Math.pow(lambda, x) * Math.exp(-lambda)) / factorial(x);
+                },
+                range: () => {
+                    const lambda = distributions.poisson.params.lambda;
+                    const max = Math.ceil(lambda + 4 * Math.sqrt(lambda));
+                    return { a: 0, b: max };
+                },
+                mean: () => distributions.poisson.params.lambda,
+                variance: () => distributions.poisson.params.lambda
+            }
+        };
+
+        // 辅助函数
+        function factorial(n) {
+            if (n === 0 || n === 1) return 1;
+            let result = 1;
+            for (let i = 2; i <= n; i++) {
+                result *= i;
+            }
+            return result;
+        }
+
+        function comb(n, k) {
+            if (k > n || k < 0) return 0;
+            if (k === 0 || k === n) return 1;
+            k = Math.min(k, n - k); // Take advantage of symmetry
+            let c = 1;
+            for (let i = 0; i < k; i++) {
+                c = c * (n - i) / (i + 1);
+            }
+            return c;
+        }
+
+        // 更新分布参数显示
+        function updateDistributionParams() {
+            const dist = distributions[distributionSelect.value];
+            const params = dist.params;
+            let paramsText = `${dist.name}: `;
+            
+            if (distributionSelect.value === 'normal') {
+                paramsText += `μ=${params.mu.toFixed(2)}, σ=${params.sigma.toFixed(2)}`;
+            } else if (distributionSelect.value === 'uniform') {
+                paramsText += `a=${params.a.toFixed(2)}, b=${params.b.toFixed(2)}`;
+            } else if (distributionSelect.value === 'exponential') {
+                paramsText += `λ=${params.lambda.toFixed(2)}`;
+            } else if (distributionSelect.value === 'binomial') {
+                paramsText += `n=${params.n}, p=${params.p.toFixed(2)}`;
+            } else if (distributionSelect.value === 'poisson') {
+                paramsText += `λ=${params.lambda.toFixed(2)}`;
+            }
+            
+            distributionParams.textContent = paramsText;
+        }
+
+        // 初始化图表
+        function initCharts() {
+            // 总体分布图表
+            populationChart = new Chart(populationChartCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '总体分布 PDF',
+                        data: [],
+                        borderColor: '#e74c3c',
+                        borderWidth: 2,
+                        fill: true,
+                        backgroundColor: 'rgba(231, 76, 60, 0.2)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'x'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toFixed(2);
+                                }
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: '概率密度 f(x)'
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+
+            // 样本均值分布图表
+            meansChart = new Chart(meansChartCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: '样本均值直方图',
+                            data: [],
+                            backgroundColor: 'rgba(52, 152, 219, 0.7)',
+                            borderColor: 'rgba(52, 152, 219, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: '正态分布拟合',
+                            data: [],
+                            type: 'line',
+                            borderColor: '#f39c12',
+                            borderWidth: 2,
+                            fill: false,
+                            yAxisID: 'y'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: '样本均值 (\u0305{x})'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toFixed(2);
+                                }
+                            },
+                            type: 'linear',
+                            offset: false
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: '频率/概率密度'
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
+
+        // 更新总体分布图表
+        function updatePopulationChart() {
+            const dist = distributions[distributionSelect.value];
+            // 直接计算范围，确保正确的对称范围
+            let a, b;
+            if (distributionSelect.value === 'normal') {
+                // 正态分布特殊处理，确保对称显示
+                a = -4;
+                b = 4;
+            } else {
+                ({ a, b } = dist.range());
+            }
+            
+            const xValues = [];
+            const yValues = [];
+            
+            const step = (b - a) / 200;
+            for (let x = a; x <= b; x += step) {
+                xValues.push(x);
+                yValues.push(dist.pdf(x));
+            }
+            
+            // 重置图表配置
+            populationChart.data.labels = xValues;
+            populationChart.data.datasets[0].data = yValues;
+            
+            // 重新设置图表选项
+            populationChart.options.scales.x = {
+                title: {
+                    display: true,
+                    text: 'x'
+                },
+                ticks: {
+                    callback: function(value) {
+                        return value.toFixed(2);
+                    }
+                },
+                min: a,
+                max: b,
+                type: 'linear' // 确保是线性刻度
+            };
+            
+            populationChart.options.scales.y = {
+                title: {
+                    display: true,
+                    text: '概率密度 f(x)'
+                },
+                beginAtZero: true,
+                type: 'linear' // 确保是线性刻度
+            };
+            
+            // 强制更新图表
+            populationChart.update('none');
+        }
+
+        // 运行模拟
+        function runSimulation() {
+            const distType = distributionSelect.value;
+            const n = parseInt(sampleSizeSlider.value);
+            const trials = parseInt(trialsCountSlider.value);
+            const dist = distributions[distType];
+            
+            // 更新显示
+            sampleSizeValue.textContent = n;
+            trialsCountValue.textContent = trials;
+            meanNValue.textContent = n;
+            
+            // 生成样本均值
+            const sampleMeans = [];
+            for (let i = 0; i < trials; i++) {
+                const sample = dist.generate(n);
+                const mean = sample.reduce((sum, val) => sum + val, 0) / n;
+                sampleMeans.push(mean);
+            }
+            
+            // 计算统计量
+            const populationMean = dist.mean();
+            const populationVariance = dist.variance();
+            const sampleMean = sampleMeans.reduce((sum, val) => sum + val, 0) / trials;
+            const sampleStd = Math.sqrt(sampleMeans.reduce((sum, val) => sum + Math.pow(val - sampleMean, 2), 0) / (trials - 1));
+            const sampleMeanStd = Math.sqrt(populationVariance / n);
+            
+            // 更新统计信息
+            populationMeanElem.textContent = populationMean.toFixed(2);
+            populationVarianceElem.textContent = populationVariance.toFixed(2);
+            sampleMeanElem.textContent = sampleMean.toFixed(4);
+            sampleMeanStdElem.textContent = sampleMeanStd.toFixed(4);
+            
+            // 创建直方图
+            const actualMin = Math.min(...sampleMeans);
+            const actualMax = Math.max(...sampleMeans);
+            
+            // 计算合适的x轴范围，确保包含负值并保持对称性
+            const meanRange = Math.max(Math.abs(actualMin), Math.abs(actualMax));
+            const adjustedMin = -meanRange;
+            const adjustedMax = meanRange;
+            
+            // 使用调整后的范围创建直方图
+            const binCount = Math.min(30, Math.ceil(Math.sqrt(trials)));
+            const binWidth = (adjustedMax - adjustedMin) / binCount;
+            const bins = Array(binCount).fill(0);
+            const binLabels = [];
+            
+            for (let i = 0; i < binCount; i++) {
+                const binMin = adjustedMin + i * binWidth;
+                const binMax = binMin + binWidth;
+                binLabels.push((binMin + binMax) / 2);
+            }
+            
+            for (const mean of sampleMeans) {
+                const binIndex = Math.min(binCount - 1, Math.floor((mean - adjustedMin) / binWidth));
+                bins[binIndex]++;
+            }
+            
+            // 将频率转换为概率密度
+            const pdfBins = bins.map(count => count / (trials * binWidth));
+            
+            // 计算正态分布拟合曲线，使用调整后的范围
+            const normalX = [];
+            const normalY = [];
+            const normalStep = (adjustedMax - adjustedMin) / 100;
+            for (let x = adjustedMin; x <= adjustedMax; x += normalStep) {
+                normalX.push(x);
+                normalY.push((1 / (sampleMeanStd * Math.sqrt(2 * Math.PI))) * 
+                             Math.exp(-0.5 * Math.pow((x - populationMean) / sampleMeanStd, 2)));
+            }
+            
+            // 设置x轴范围
+            meansChart.options.scales.x.min = adjustedMin;
+            meansChart.options.scales.x.max = adjustedMax;
+            meansChart.options.scales.x.type = 'linear'; // 确保是线性刻度
+            meansChart.options.scales.x.offset = false; // 禁用偏移，确保数据居中
+            
+            // 更新图表
+            meansChart.data.labels = binLabels;
+            meansChart.data.datasets[0].data = pdfBins;
+            
+            // 为正态分布拟合数据创建与直方图bin对应的Y值
+            // 我们需要将正态分布的连续曲线适配到直方图的离散bin上
+            const normalYForBins = binLabels.map(binCenter => {
+                // 对于每个bin中心，计算对应的正态分布概率密度
+                return (1 / (sampleMeanStd * Math.sqrt(2 * Math.PI))) * 
+                       Math.exp(-0.5 * Math.pow((binCenter - populationMean) / sampleMeanStd, 2));
+            });
+            
+            // 更新正态分布拟合曲线数据
+            meansChart.data.datasets[1].data = normalYForBins;
+            
+            meansChart.update();
+            updatePopulationChart();
+        }
+
+        // 事件监听
+        sampleSizeSlider.addEventListener('input', () => {
+            sampleSizeValue.textContent = sampleSizeSlider.value;
+        });
+        
+        trialsCountSlider.addEventListener('input', () => {
+            trialsCountValue.textContent = trialsCountSlider.value;
+        });
+        
+        distributionSelect.addEventListener('change', updateDistributionParams);
+        
+        runButton.addEventListener('click', runSimulation);
+        
+        // 初始化
+        window.onload = () => {
+            initCharts();
+            updateDistributionParams();
+            runSimulation();
+        };
+    </script>
+</body>
+</html>
