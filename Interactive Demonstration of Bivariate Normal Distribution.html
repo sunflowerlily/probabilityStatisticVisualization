@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>二维正态分布交互演示</title>
+    <!-- 引入 Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f9;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h2 {
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            width: 100%;
+            max-width: 1200px;
+            background: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .controls {
+            flex: 1;
+            min-width: 300px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-right: 1px solid #e9ecef;
+        }
+
+        .plot-area {
+            flex: 3;
+            min-width: 300px;
+            height: 600px;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .value-display {
+            float: right;
+            color: #007bff;
+            font-family: monospace;
+        }
+
+        .formula {
+            margin-top: 20px;
+            padding: 10px;
+            background: #eef;
+            border-radius: 4px;
+            font-size: 0.85em;
+            line-height: 1.5;
+        }
+        
+        .formula code {
+            display: block;
+            text-align: center;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            .controls {
+                border-right: none;
+                border-bottom: 1px solid #e9ecef;
+            }
+            .plot-area {
+                height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <h2>二维正态分布参数可视化</h2>
+    <p style="font-size: 0.9em; color: #666;">拖动滑块观察参数对概率密度曲面 (PDF) 的影响</p>
+
+    <div class="container">
+        <div class="controls">
+            <!-- Mu X -->
+            <div class="control-group">
+                <label>
+                    μ<sub>X</sub> (X轴均值)
+                    <span id="val-mux" class="value-display">0</span>
+                </label>
+                <input type="range" id="mux" min="-3" max="3" step="0.1" value="0">
+            </div>
+
+            <!-- Mu Y -->
+            <div class="control-group">
+                <label>
+                    μ<sub>Y</sub> (Y轴均值)
+                    <span id="val-muy" class="value-display">0</span>
+                </label>
+                <input type="range" id="muy" min="-3" max="3" step="0.1" value="0">
+            </div>
+
+            <!-- Sigma X -->
+            <div class="control-group">
+                <label>
+                    σ<sub>X</sub> (X轴标准差)
+                    <span id="val-sigmax" class="value-display">1</span>
+                </label>
+                <input type="range" id="sigmax" min="0.5" max="3" step="0.1" value="1">
+            </div>
+
+            <!-- Sigma Y -->
+            <div class="control-group">
+                <label>
+                    σ<sub>Y</sub> (Y轴标准差)
+                    <span id="val-sigmay" class="value-display">1</span>
+                </label>
+                <input type="range" id="sigmay" min="0.5" max="3" step="0.1" value="1">
+            </div>
+
+            <!-- Rho -->
+            <div class="control-group">
+                <label>
+                    ρ (相关系数)
+                    <span id="val-rho" class="value-display">0</span>
+                </label>
+                <input type="range" id="rho" min="-0.9" max="0.9" step="0.05" value="0">
+            </div>
+
+            <div class="formula">
+                <strong>观察指南：</strong>
+                <ul>
+                    <li><strong>μ</strong>：移动山峰的位置。</li>
+                    <li><strong>σ</strong>：改变山峰沿轴向的胖瘦（扩散程度）。</li>
+                    <li><strong>ρ</strong>：从俯视看，将圆压扁成椭圆并旋转。</li>
+                </ul>
+            </div>
+        </div>
+        <div id="plotDiv" class="plot-area"></div>
+    </div>
+
+    <script>
+        // 初始化参数
+        let params = {
+            mux: 0,
+            muy: 0,
+            sigmax: 1,
+            sigmay: 1,
+            rho: 0
+        };
+
+        // 生成网格数据
+        const axisRange = 6;
+        const step = 0.2;
+        const x = [];
+        const y = [];
+        
+        for (let i = -axisRange; i <= axisRange; i += step) {
+            x.push(i);
+            y.push(i);
+        }
+
+        // 二维正态分布 PDF 公式
+        function calculateZ(xArr, yArr, p) {
+            let z = [];
+            for (let j = 0; j < yArr.length; j++) {
+                let row = [];
+                for (let i = 0; i < xArr.length; i++) {
+                    const xi = xArr[i];
+                    const yj = yArr[j];
+                    
+                    const term1 = 1 / (2 * Math.PI * p.sigmax * p.sigmay * Math.sqrt(1 - p.rho * p.rho));
+                    const z_score = (Math.pow(xi - p.mux, 2) / Math.pow(p.sigmax, 2)) +
+                                    (Math.pow(yj - p.muy, 2) / Math.pow(p.sigmay, 2)) -
+                                    (2 * p.rho * (xi - p.mux) * (yj - p.muy)) / (p.sigmax * p.sigmay);
+                    
+                    const val = term1 * Math.exp(-z_score / (2 * (1 - p.rho * p.rho)));
+                    row.push(val);
+                }
+                z.push(row);
+            }
+            return z;
+        }
+
+        // 绘图配置
+        const layout = {
+            autosize: true,
+            margin: { l: 0, r: 0, b: 0, t: 30 },
+            scene: {
+                xaxis: { title: 'X', range: [-axisRange, axisRange] },
+                yaxis: { title: 'Y', range: [-axisRange, axisRange] },
+                zaxis: { title: 'Probability Density', range: [0, 0.4] },
+                camera: {
+                    eye: { x: 1.5, y: 1.5, z: 1.2 }
+                }
+            }
+        };
+
+        const config = { responsive: true, displayModeBar: false };
+
+        // 初始绘图
+        let zData = calculateZ(x, y, params);
+        let data = [{
+            z: zData,
+            x: x,
+            y: y,
+            type: 'surface',
+            colorscale: 'Viridis',
+            contours: {
+                z: {
+                    show: true,
+                    usecolormap: true,
+                    highlightcolor: "#42f462",
+                    project: { z: true } // 在底部投影等高线
+                }
+            }
+        }];
+
+        Plotly.newPlot('plotDiv', data, layout, config);
+
+        // 监听滑块变化
+        const inputs = ['mux', 'muy', 'sigmax', 'sigmay', 'rho'];
+        
+        inputs.forEach(id => {
+            const el = document.getElementById(id);
+            el.addEventListener('input', function() {
+                // 更新参数
+                params[id] = parseFloat(this.value);
+                
+                // 更新显示数值
+                document.getElementById('val-' + id).innerText = params[id];
+                
+                // 重新计算 Z 值
+                const newZ = calculateZ(x, y, params);
+                
+                // 高效更新图表
+                Plotly.react('plotDiv', [{
+                    z: newZ,
+                    x: x,
+                    y: y,
+                    type: 'surface',
+                    colorscale: 'Viridis',
+                    contours: {
+                        z: {
+                            show: true,
+                            usecolormap: true,
+                            highlightcolor: "#42f462",
+                            project: { z: true }
+                        }
+                    }
+                }], layout, config);
+            });
+        });
+
+    </script>
+</body>
+</html>
